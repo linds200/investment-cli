@@ -1,28 +1,16 @@
-from domain.Security import Security
-
-class Portfolio:
-    def __init__(self, id: str, owner_username: str, name: str, description, investment_strategy: str, holdings: list = []):
-        self.id = id
-        self.owner_username = owner_username
-        self.name = name
-        self.description = description
-        self.investment_strategy = investment_strategy
-        self.holdings = holdings  # List of tuples (Security, quantity)
+from typing import List
+from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.database import Base
+from app.domain import Investment, Transaction, User
+class Portfolio(Base):
+    __tablename__ = 'Portfolio'
+    id: Mapped[int] = mapped_column(Integer, primary_key = True, autoincrement = True)
+    owner_username: Mapped[str] = mapped_column(String(30), ForeignKey('User.username'), nullable = False)
+    name: Mapped[str] = mapped_column(String(50), nullable = False)
+    description: Mapped[str] = mapped_column(String(500), nullable = True)
+    investment_strategy: Mapped[str] = mapped_column(String(100), nullable = True)
     
-    def add_holding(self, security: 'Security', quantity: int):
-        for holding in self.holdings:
-            if holding[0].ticker == security.ticker:
-                holding[1] += quantity
-                return
-        self.holdings.append([security, quantity])
-    
-    def remove_holding(self, ticker: str, quantity: int):
-        for holding in self.holdings:
-            if holding[0].ticker == ticker:
-                if quantity > holding[1]:
-                    raise ValueError("Cannot remove more than owned quantity")
-                holding[1] -= quantity
-                if holding[1] == 0:
-                    self.holdings.remove(holding)
-                return
-        raise ValueError(f"No holdings found for ticker {ticker}")
+    user: Mapped[List[User]] = relationship('User', back_populates = 'portfolio')
+    investment: Mapped[List[Investment]] = relationship('Investment', back_populates = 'portfolio')
+    transaction: Mapped[List[Transaction]] = relationship('Transaction', back_populates = 'portfolio')

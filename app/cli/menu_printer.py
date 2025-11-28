@@ -1,17 +1,15 @@
 # native modules
 import sys
-from typing import Dict, Tuple, List
+from typing import Dict
 # external dependencies
 from rich.console import Console
-from rich.table import Table
 # internal dependencies
-from cli import constants
-from domain.MenuFunctions import MenuFunctions
-from services.login_service import login
-from services.user_service import get_all_users, print_all_users, create_user, delete_user
-from services.portfolio_service import get_all_portfolios, print_all_portfolios, create_portfolio, delete_portfolio, harvest_investment
-from services.security_service import get_all_securities, print_all_securities, place_buy_order
-import db
+from app.cli import constants
+from app.domain.MenuFunctions import MenuFunctions
+from app.services.login_service import login, get_logged_in_user, reset_logged_in_user
+from app.services.user_service import get_all_users, print_all_users, create_user, delete_user
+from app.services.portfolio_service import get_all_portfolios, print_all_portfolios, create_portfolio, delete_portfolio, harvest_investment
+from app.services.security_service import get_all_securities, print_all_securities, place_buy_order
 
 _console = Console()
 
@@ -24,7 +22,7 @@ _menus: Dict[int, str] = {
 }
 
 def navigate_to_manage_users_menu() -> int:
-    logged_in_user = db.get_logged_in_user()
+    logged_in_user = get_logged_in_user()
     if logged_in_user and logged_in_user.username != "admin":
         raise UnsupportedMenuError("Manager Users Menu is only accessible by admin user.")
     return constants.manager_users_menu
@@ -57,18 +55,19 @@ def handle_user_selection(menu_id: int, user_selection: int):
         if menu_id == constants.login_menu:
             sys.exit(0) #terminate the application
         elif menu_id == constants.main_menu:
-            db.reset_logged_in_user()
-            print_menu(constants.login_menu) #logout and return to login menu
+            reset_logged_in_user()
+            print_menu(constants.login_menu) # logout and return to login menu
         else:
-            print_menu(constants.main_menu) #return to main menu from sub-menus
+            print_menu(constants.main_menu) # return to main menu from sub-menus
     formatted_user_input = f"{str(menu_id)}.{str(user_selection)}"
     menu_functions = _router[formatted_user_input]
     try:
+        result = None
         if menu_functions.executor:
             result = menu_functions.executor()
             if result and menu_functions.printer:
                 menu_functions.printer(result)
-        if menu_functions.navigator:
+        if menu_functions.navigator and (menu_functions.executor is None or result):
             print_menu(menu_functions.navigator())
         else:
             print_menu(menu_id)

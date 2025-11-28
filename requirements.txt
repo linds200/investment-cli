@@ -1,1 +1,5 @@
 rich==14.1.0
+sqlalchemy==2.0.44
+pymysql==1.1.2
+pytest==9.0.1
+pytest-cov==7.0.0
