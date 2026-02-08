@@ -2,27 +2,45 @@ from datetime import datetime, timezone
 from typing import List
 from rich.console import Console
 from rich.table import Table
-from app import database
-from app.domain.Investment import Investment
-from app.domain.Portfolio import Portfolio
-from app.domain.Transaction import Transaction
-from app.domain.User import User
-from app.services.login_service import get_logged_in_user
+from app.db import db
+from app.domain import Investment, Portfolio, Transaction, User, Security
 
 _console = Console()
+class UnsupportedPortfolioOperation(Exception):
+    pass
 
 def get_all_portfolios() -> List[Portfolio]:
     session = None
     try:
-        user = get_logged_in_user()
-        session = database.get_session()
-        portfolios = (session.query(Portfolio).filter_by(owner_username = user.username).all())
+        session = db.session
+        portfolios = session.query(Portfolio).all()
         if not portfolios:
-            _console.print("\nNo portfolios found for the logged-in user.\n", style = "bold yellow")
+            raise UnsupportedPortfolioOperation("No portfolios found.")
         return portfolios
     finally:
-        if session:
-            session.close()
+        session.close() if session else None
+
+def get_all_portfolios_by_user(user: str) -> List[Portfolio]:
+    session = None
+    try:
+        session = db.session
+        portfolios = (session.query(Portfolio).filter_by(owner_username = user).all())
+        if not portfolios:
+            raise UnsupportedPortfolioOperation(f"No portfolios found for user {user}.")
+        return portfolios
+    finally:
+        session.close() if session else None
+
+def get_portfolio_by_id(portfolio_id: int) -> Portfolio:
+    session = None
+    try:
+        session = db.session
+        portfolio = session.query(Portfolio).filter(Portfolio.id == portfolio_id).first()
+        if not portfolio:
+            raise UnsupportedPortfolioOperation(f"Portfolio with ID {portfolio_id} does not exist.")
+        return portfolio
+    finally:
+        session.close() if session else None
 
 def print_all_portfolios(portfolios: List[Portfolio]):
     table = Table(title = "Portfolios")
@@ -35,80 +53,102 @@ def print_all_portfolios(portfolios: List[Portfolio]):
         table.add_row(str(portfolio.id), portfolio.owner_username, portfolio.name, portfolio.description, portfolio.investment_strategy)
     _console.print(table)
 
-def create_portfolio() -> str:
+def get_all_transactions(logged_in_user: str, portfolio_id: int, security: str) -> List[Transaction]:
     session = None
     try:
-        name = _console.input("Enter Portfolio Name: ")
-        description = _console.input("Enter Portfolio Description: ")
-        investment_strategy = _console.input("Enter Investment Strategy: ")
-        owner_username = get_logged_in_user().username
-        session = database.get_session()
-        session.add(Portfolio(owner_username = owner_username, name = name, description = description, investment_strategy = investment_strategy))
-        session.commit()
-        _console.print(f"\nPortfolio {name} created successfully.\n", style = "bold green")
-    except ValueError:
-        _console.print("\nInvalid input. Please try again.\n", style = "bold red")
+        session = db.session
+        if portfolio_id == "all":
+            portfolios = session.query(Portfolio).filter(Portfolio.owner_username == logged_in_user).all()
+            if not portfolios:
+                raise UnsupportedPortfolioOperation(f"No portfolios found for user {logged_in_user}.")
+            portfolio_ids = [portfolio.id for portfolio in portfolios]
+            transactions = session.query(Transaction).filter(Transaction.portfolio_id.in_(portfolio_ids)).all()
+            if not transactions:
+                raise UnsupportedPortfolioOperation(f"No transactions found for user {logged_in_user}.")
+        else:
+            if not isinstance(portfolio_id, int):
+                raise UnsupportedPortfolioOperation("Portfolio ID must be an integer.")
+            portfolio = session.query(Portfolio).filter(Portfolio.id == portfolio_id).first()
+            if not portfolio:
+                raise UnsupportedPortfolioOperation(f"Portfolio with ID {portfolio_id} does not exist.")
+            if portfolio.owner_username != logged_in_user:
+                raise UnsupportedPortfolioOperation("You do not have permission to view transactions for this portfolio.")
+            if security == "all":
+                transactions = session.query(Transaction).filter(Transaction.portfolio_id == portfolio.id).all()
+                if not transactions:
+                    raise UnsupportedPortfolioOperation(f"No transactions found for Portfolio {portfolio.id}.")
+            else:
+                security_obj = session.query(Security).filter(Security.ticker == security).first()
+                if not security_obj:
+                    raise UnsupportedPortfolioOperation(f"Security with ticker {security} does not exist.")
+                if security:
+                    transactions = session.query(Transaction).filter(Transaction.portfolio_id == portfolio.id, Transaction.security == security).all()
+                    if not transactions:
+                        raise UnsupportedPortfolioOperation(f"No transactions found for security {security} in Portfolio {portfolio.id}.")
+        return transactions
     finally:
         session.close() if session else None
 
-def delete_portfolio() -> str:
+def print_all_transactions(transactions: List[Transaction]):
+    table = Table(title = "Transactions")
+    table.add_column("ID", justify = "right", style = "cyan", no_wrap = True)
+    table.add_column("Portfolio ID", justify = "right", style = "magenta")
+    table.add_column("Security", style = "magenta")
+    table.add_column("Type", style = "magenta")
+    table.add_column("Quantity", justify = "right", style = "magenta")
+    table.add_column("Price", justify = "right", style = "magenta")
+    table.add_column("Timestamp", style = "magenta")
+    for transaction in transactions:
+        table.add_row(str(transaction.id), str(transaction.portfolio_id), transaction.security, transaction.type, str(transaction.quantity), f"{transaction.price:.2f}", transaction.timestamp.strftime("%Y-%m-%d %H:%M:%S"))
+    _console.print(table)
+
+def create_portfolio(user: User, name: str, description: str, investment_strategy: str) -> str:
     session = None
     try:
-        portfolio_id = int(_console.input("Enter Portfolio ID to delete: "))
-        session = database.get_session()
+        session = db.session
+        session.add(Portfolio(owner_username = user.username, name = name, description = description, investment_strategy = investment_strategy))
+        session.commit()
+    finally:
+        session.close() if session else None
+
+def delete_portfolio(logged_in_user: str, portfolio_id: int) -> str:
+    session = None
+    try:
+        session = db.session
         portfolio = session.query(Portfolio).filter_by(id = portfolio_id).first()
         if portfolio is None:
-            _console.print(f"\nPortfolio with ID {portfolio_id} does not exist.\n", style = "bold red")
-            return
-        user = get_logged_in_user()
-        if portfolio.owner_username != user.username:
-            _console.print("\nYou do not have permission to delete this portfolio.\n", style = "bold red")
-            return
+            raise UnsupportedPortfolioOperation(f"Portfolio with ID {portfolio_id} does not exist.")
+        if not isinstance(portfolio_id, int):
+            raise UnsupportedPortfolioOperation("Portfolio ID must be an integer.")
+        if portfolio.owner_username != logged_in_user:
+            raise UnsupportedPortfolioOperation("You do not have permission to delete this portfolio.")
         if portfolio.investment:
-            _console.print("\nCannot delete a portfolio that has investments. Please harvest all investments first.\n", style = "bold red")
-            return
+            raise UnsupportedPortfolioOperation("Cannot delete a portfolio that has investments. Please harvest all investments first.")
         session.delete(portfolio)
         session.commit()
-        _console.print(f"\nPortfolio with ID {portfolio_id} deleted successfully.\n", style = "bold green")
-    except ValueError:
-        _console.print("\nInvalid input. Portfolio ID must be a number.\n", style = "bold red")
-    except Exception as e:
-        # Generic safety net so SQL errors or unexpected issues are caught
-        _console.print(f"\nUnexpected error: {e}\n", style = "bold red")
     finally:
         session.close() if session else None
 
-def harvest_investment() -> str:
+def harvest_investment(logged_in_user: str, portfolio_id: int, ticker: str, quantity_input: int, sale_price: float) -> str:
     session = None
     try:
-        portfolio_id = int(_console.input("Enter Portfolio ID to harvest from: "))
-        ticker = _console.input("Enter Ticker of Investment to harvest: ")
-        quantity_input = int(_console.input("Enter Quantity to harvest: "))
-        sale_price = float(_console.input("Enter Sale Price per Unit: "))
-        
-        session = database.get_session()
+        session = db.session
         portfolio = session.query(Portfolio).filter(Portfolio.id == portfolio_id).first()
         if not portfolio:
-            _console.print(f"\nPortfolio with ID {portfolio_id} does not exist.\n", style = "bold red")
-            return
-        logged_in = get_logged_in_user()
-        user = session.query(User).filter_by(username=logged_in.username).first()
-        if portfolio.owner_username != user.username:
-            _console.print("\nYou do not have permission to harvest from this portfolio.\n", style = "bold red")
-            return
+            raise UnsupportedPortfolioOperation(f"Portfolio with ID {portfolio_id} does not exist.")
+        if portfolio.owner_username != logged_in_user:
+            raise UnsupportedPortfolioOperation("You do not have permission to harvest from this portfolio.")
         portfolio_investment = session.query(Investment).filter(Investment.portfolio_id == portfolio.id, Investment.ticker == ticker).first()
         if not portfolio_investment:
-            _console.print(f"\nNo investment with ticker {ticker} found in Portfolio {portfolio.id}.\n", style = "bold red")
-            return
+            raise UnsupportedPortfolioOperation(f"No investment with ticker {ticker} found in Portfolio {portfolio.id}.")
         if quantity_input > portfolio_investment.quantity:
-            _console.print("\nInsufficient quantity of investment to harvest.\n", style = "bold red")
-            return
+            raise UnsupportedPortfolioOperation("Cannot harvest more than the quantity held in the portfolio.")
+        user = session.query(User).filter_by(username = logged_in_user).first()
         user.balance += quantity_input * sale_price
         portfolio_investment.quantity -= quantity_input
         if portfolio_investment.quantity == 0:
             session.delete(portfolio_investment)
         session.add(Transaction(user = user.username, portfolio_id = portfolio.id, security = ticker, type = 'SELL', quantity = quantity_input, price = sale_price, timestamp = datetime.now(timezone.utc)))
         session.commit()
-        _console.print(f"\nHarvested {quantity_input} shares of {ticker} from Portfolio {portfolio.id}.\n", style = "bold green")
     finally:
         session.close() if session else None

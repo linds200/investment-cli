@@ -1,28 +1,32 @@
 from typing import List
 from rich.console import Console
 from rich.table import Table
-from app import database
+from app.db import db
 from app.domain.User import User
 
 _console = Console()
 
+class UnsupportedUserOperation(Exception):
+    pass
+
 def get_all_users() -> List[User]:
     session = None
     try:
-        session = database.get_session()
-        return session.query(User).all()
-    except Exception as e:
-        _console.print(f"\nFailed to retrieve users: {e}\n", style="bold red")
-        return []
+        session = db.session
+        users = session.query(User).all()
+        if not users:
+            raise UnsupportedUserOperation("No users found.")
     finally:
-        if session:
-            session.close()
+        session.close() if session else None
+    return users
 
-
-def get_user_by_username(username: str) -> User | None:
+def get_user_by_username(username: str) -> User:
+    session = None
     try:
-        session = database.get_session()
+        session = db.session
         user = session.query(User).filter(User.username == username).first()
+        if not user:
+            raise UnsupportedUserOperation(f"User {username} does not exist.")
     finally:
         session.close() if session else None
     return user
@@ -37,42 +41,37 @@ def print_all_users(users: List[User]):
         table.add_row(user.username, user.firstname, user.lastname, f"${user.balance:.2f}")
     _console.print(table)
 
-def create_user() -> str:
+def create_user(logged_in_user: str, username: str, password: str, firstname: str, lastname: str, balance_input: int) -> str:
     session = None
     try:
-        username = _console.input("Enter Username: ")
-        password = _console.input("Enter Password: ")
-        firstname = _console.input("Enter First Name: ")
-        lastname = _console.input("Enter Last Name: ")
-        balance_input = float(_console.input("Enter Initial Balance: "))
-        session = database.get_session()
+        if logged_in_user != "admin":
+            raise UnsupportedUserOperation("Only admin can create new users.")
+        if get_user_by_username(username):
+            raise UnsupportedUserOperation(f"User {username} already exists.")
+        if not isinstance(balance_input, int):
+            raise UnsupportedUserOperation("Balance must be an integer.")
+        if balance_input < 0:
+            raise UnsupportedUserOperation("Balance cannot be negative.")
+        session = db.session
         session.add(User(username=username, password=password, firstname=firstname, lastname=lastname, balance=balance_input))
         session.commit()
-        _console.print(f"\nUser {username} created successfully.\n", style = "bold green")
-    except ValueError:
-        _console.print("\nInvalid input. Please try again.\n", style = "bold red")
     finally:
         session.close() if session else None
 
-def delete_user() -> str:
+def delete_user(logged_in_user: str, username: str) -> str:
     session = None
     try:
-        username = _console.input("Enter Username of user to delete: ")
+        if logged_in_user != "admin":
+            raise UnsupportedUserOperation("Only admin can delete users.")
         if username == "admin":
-            _console.print("\nCannot delete admin user\n", style="bold red")
-            return
-        session = database.get_session()
+            raise UnsupportedUserOperation("Cannot delete admin user.")
+        session = db.session
         user = session.query(User).filter(User.username == username).first()
         if not user:
-            _console.print(f"\nUser with username {username} does not exist\n", style="bold red")
-            return
+            raise UnsupportedUserOperation(f"User {username} does not exist.")
         if user.portfolio:
-            _console.print(f"\nCannot delete user {username} who owns portfolios. Please delete all portfolios first.\n", style="bold red")
-            return
+            raise UnsupportedUserOperation(f"User {username} has associated portfolios and cannot be deleted.")
         session.delete(user)
         session.commit()
-        _console.print(f"\nUser {username} deleted successfully.\n", style = "bold green")
-    except Exception as e:
-        _console.print(f"\nError deleting user: {e}\n", style = "bold red")
     finally:
         session.close() if session else None

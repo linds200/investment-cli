@@ -1,7 +1,179 @@
-from app.domain import Portfolio, User, Security, Investment
+from datetime import datetime
+from app.domain import Portfolio, User, Security, Investment, Transaction
 from app.services.login_service import set_logged_in_user, get_logged_in_user
 from app.services.security_service import place_buy_order
-from app.services.portfolio_service import create_portfolio, delete_portfolio, get_all_portfolios, print_all_portfolios, harvest_investment
+from app.services.portfolio_service import get_all_portfolios, print_all_portfolios, get_all_transactions, print_all_transactions, create_portfolio, delete_portfolio, harvest_investment
+
+def test_get_all_portfolios(db_session):
+    user = User(username = 'testuser', password = 'testpass', firstname = 'Test', lastname = 'User', balance = 1000.0)
+    db_session.add(user)
+    db_session.commit()
+    set_logged_in_user('testuser')
+    portfolio1 = Portfolio(owner_username='testuser', name='Portfolio1', description='Desc1', investment_strategy='Strategy1')
+    portfolio2 = Portfolio(owner_username='testuser', name='Portfolio2', description='Desc2', investment_strategy='Strategy2')
+    db_session.add_all([portfolio1, portfolio2])
+    db_session.commit()
+    portfolios = get_all_portfolios()
+    assert len(portfolios) == 2
+    assert portfolios[0].name == 'Portfolio1'
+    assert portfolios[1].name == 'Portfolio2'
+
+def test_get_all_portfolios_empty(db_session, capsys):
+    user = User(username = 'testuser', password = 'testpass', firstname = 'Test', lastname = 'User', balance = 1000.0)
+    db_session.add(user)
+    db_session.commit()
+    set_logged_in_user('testuser')
+    portfolios = get_all_portfolios()
+    captured = capsys.readouterr()
+    assert len(portfolios) == 0
+    assert "No portfolios found" in captured.out
+
+def test_print_all_portfolios(capsys, db_session):
+    user = User(username = 'testuser', password = 'testpass', firstname = 'Test', lastname = 'User', balance = 1000.0)
+    db_session.add(user)
+    db_session.commit()
+    set_logged_in_user('testuser')
+    portfolio1 = Portfolio(owner_username='testuser', name='Portfolio1', description='Desc1', investment_strategy='Strategy1')
+    portfolio2 = Portfolio(owner_username='testuser', name='Portfolio2', description='Desc2', investment_strategy='Strategy2')
+    db_session.add_all([portfolio1, portfolio2])
+    db_session.commit()
+    portfolios = get_all_portfolios()
+    print_all_portfolios(portfolios)
+    captured = capsys.readouterr()
+    assert "Portfolio1" in captured.out
+    assert "Portfolio2" in captured.out
+
+def test_print_all_portfolios_empty(capsys):
+    portfolios = []
+    print_all_portfolios(portfolios)
+    captured = capsys.readouterr()
+    assert "Portfolios" in captured.out  # Table title should still be printed  
+
+def test_get_all_transactions(db_session, monkeypatch):
+    user = User(username = 'testuser', password = 'testpass', firstname = 'Test', lastname = 'User', balance = 1000.0)
+    db_session.add(user)
+    db_session.commit()
+    set_logged_in_user('testuser')
+    portfolio = Portfolio(owner_username = 'testuser', name = 'Test Portfolio', description = 'Desc', investment_strategy = 'Strategy')
+    db_session.add(portfolio)
+    db_session.flush()
+    portfolio_id = portfolio.id
+    transaction1 = Transaction(user = 'testuser', portfolio_id = portfolio_id, security = 'AAPL', type = 'BUY', quantity = 10, price = 150.0, timestamp = datetime(2024, 1, 1, 10, 0, 0))
+    transaction2 = Transaction(user = 'testuser', portfolio_id = portfolio_id, security = 'GOOGL', type = 'BUY', quantity = 5, price = 2800.0, timestamp = datetime(2024, 1, 2, 11, 0, 0))
+    db_session.add_all([transaction1, transaction2])
+    db_session.commit()
+    monkeypatch.setattr('rich.console.Console.input', lambda self, prompt: str(portfolio_id) if "Portfolio ID" in prompt else "")
+    transactions = get_all_transactions()
+    assert len(transactions) == 2
+    assert transactions[0].security == 'AAPL'
+    assert transactions[1].security == 'GOOGL'
+
+def test_get_all_transactions_empty(db_session, monkeypatch, capsys):
+    user = User(username = 'testuser', password = 'testpass', firstname = 'Test', lastname = 'User', balance = 1000.0)
+    db_session.add(user)
+    db_session.commit()
+    set_logged_in_user('testuser')
+    portfolio = Portfolio(owner_username = 'testuser', name = 'Test Portfolio', description = 'Desc', investment_strategy = 'Strategy')
+    db_session.add(portfolio)
+    db_session.flush()
+    portfolio_id = portfolio.id
+    db_session.commit()
+    monkeypatch.setattr('rich.console.Console.input', lambda self, prompt: str(portfolio_id) if "Portfolio ID" in prompt else "")
+    transactions = get_all_transactions()
+    captured = capsys.readouterr()
+    assert len(transactions) == 0
+    assert f"No transactions found in Portfolio {portfolio_id}" in captured.out
+
+def test_get_all_transactions_no_portfolio(db_session, monkeypatch, capsys):
+    user = User(username = 'testuser', password = 'testpass', firstname = 'Test', lastname = 'User', balance = 1000.0)
+    db_session.add(user)
+    db_session.commit()
+    set_logged_in_user('testuser')
+    monkeypatch.setattr('rich.console.Console.input', lambda self, prompt: '9999')  # Non-existent portfolio ID
+    transactions = get_all_transactions()
+    captured = capsys.readouterr()
+    assert transactions is None
+    assert "does not exist" in captured.out
+
+def test_get_all_transactions_no_permission(db_session, monkeypatch, capsys):
+    user1 = User(username = 'user1', password = 'pass1', firstname = 'User', lastname = 'One', balance = 1000.0)
+    user2 = User(username = 'user2', password = 'pass2', firstname = 'User', lastname = 'Two', balance = 1000.0)
+    db_session.add_all([user1, user2])
+    db_session.commit()
+    set_logged_in_user('user1')
+    portfolio = Portfolio(owner_username = 'user1', name = 'User1 Portfolio', description = 'Desc', investment_strategy = 'Strategy')
+    db_session.add(portfolio)
+    db_session.flush()
+    portfolio_id = portfolio.id
+    db_session.commit()
+    set_logged_in_user('user2')  # Different user
+    monkeypatch.setattr('rich.console.Console.input', lambda self, prompt: str(portfolio_id))
+    transactions = get_all_transactions()
+    captured = capsys.readouterr()
+    assert transactions is None
+    assert "do not have permission" in captured.out
+
+def test_get_all_transactions_with_security_filter(db_session, monkeypatch):
+    user = User(username = 'testuser', password = 'testpass', firstname = 'Test', lastname = 'User', balance = 1000.0)
+    db_session.add(user)
+    db_session.commit()
+    set_logged_in_user('testuser')
+    portfolio = Portfolio(owner_username = 'testuser', name = 'Test Portfolio', description = 'Desc', investment_strategy = 'Strategy')
+    db_session.add(portfolio)
+    db_session.flush()
+    portfolio_id = portfolio.id
+    transaction1 = Transaction(user = 'testuser', portfolio_id = portfolio_id, security = 'AAPL', type = 'BUY', quantity = 10, price = 150.0, timestamp = datetime(2024, 1, 1, 10, 0, 0))
+    transaction2 = Transaction(user = 'testuser', portfolio_id = portfolio_id, security = 'GOOGL', type = 'BUY', quantity = 5, price = 2800.0, timestamp = datetime(2024, 1, 2, 11, 0, 0))
+    db_session.add_all([transaction1, transaction2])
+    db_session.commit()
+    inputs = iter([str(portfolio_id), 'AAPL'])
+    monkeypatch.setattr('rich.console.Console.input', lambda self, prompt: next(inputs))
+    transactions = get_all_transactions()
+    assert len(transactions) == 1
+    assert transactions[0].security == 'AAPL'
+
+def test_get_all_transactions_no_matching_security(db_session, monkeypatch, capsys):
+    user = User(username = 'testuser', password = 'testpass', firstname = 'Test', lastname = 'User', balance = 1000.0)
+    db_session.add(user)
+    db_session.commit()
+    set_logged_in_user('testuser')
+    portfolio = Portfolio(owner_username = 'testuser', name = 'Test Portfolio', description = 'Desc', investment_strategy = 'Strategy')
+    db_session.add(portfolio)
+    db_session.flush()
+    portfolio_id = portfolio.id
+    transaction1 = Transaction(user = 'testuser', portfolio_id = portfolio_id, security = 'AAPL', type = 'BUY', quantity = 10, price = 150.0, timestamp = datetime(2024, 1, 1, 10, 0, 0))
+    db_session.add(transaction1)
+    db_session.commit()
+    inputs = iter([str(portfolio_id), 'MSFT'])
+    monkeypatch.setattr('rich.console.Console.input', lambda self, prompt: next(inputs))
+    transactions = get_all_transactions()
+    captured = capsys.readouterr()
+    assert len(transactions) == 0
+    assert "No transactions found for security MSFT" in captured.out
+
+def test_print_all_transactions(capsys, db_session):
+    user = User(username = 'testuser', password = 'testpass', firstname = 'Test', lastname = 'User', balance = 1000.0)
+    db_session.add(user)
+    db_session.commit()
+    set_logged_in_user('testuser')
+    portfolio = Portfolio(owner_username = 'testuser', name = 'Test Portfolio', description = 'Desc', investment_strategy = 'Strategy')
+    db_session.add(portfolio)
+    db_session.flush()
+    portfolio_id = portfolio.id
+    transaction = Transaction(user = 'testuser', portfolio_id = portfolio_id, security = 'AAPL', type = 'BUY', quantity = 10, price = 150.0, timestamp = datetime(2024, 1, 1, 10, 0, 0))
+    db_session.add(transaction)
+    db_session.commit()
+    transactions = [transaction]
+    print_all_transactions(transactions)
+    captured = capsys.readouterr()
+    assert "AAPL" in captured.out
+    assert "10" in captured.out
+
+def test_print_all_transactions_empty(capsys):
+    transactions = []
+    print_all_transactions(transactions)
+    captured = capsys.readouterr()
+    assert "Transactions" in captured.out  # Table title should still be printed
 
 def test_create_portfolio(db_session, monkeypatch):
     user = User(username = 'testuser', password = 'testpass', firstname = 'Test', lastname = 'User', balance = 1000.0)
@@ -76,51 +248,6 @@ def test_delete_portfolio_with_investments(db_session, monkeypatch, capsys):
     delete_portfolio()
     captured = capsys.readouterr()
     assert "Cannot delete a portfolio that has investments" in captured.out
-
-def test_get_all_portfolios(db_session):
-    user = User(username = 'testuser', password = 'testpass', firstname = 'Test', lastname = 'User', balance = 1000.0)
-    db_session.add(user)
-    db_session.commit()
-    set_logged_in_user('testuser')
-    portfolio1 = Portfolio(owner_username='testuser', name='Portfolio1', description='Desc1', investment_strategy='Strategy1')
-    portfolio2 = Portfolio(owner_username='testuser', name='Portfolio2', description='Desc2', investment_strategy='Strategy2')
-    db_session.add_all([portfolio1, portfolio2])
-    db_session.commit()
-    portfolios = get_all_portfolios()
-    assert len(portfolios) == 2
-    assert portfolios[0].name == 'Portfolio1'
-    assert portfolios[1].name == 'Portfolio2'
-
-def test_get_all_portfolios_empty(db_session, capsys):
-    user = User(username = 'testuser', password = 'testpass', firstname = 'Test', lastname = 'User', balance = 1000.0)
-    db_session.add(user)
-    db_session.commit()
-    set_logged_in_user('testuser')
-    portfolios = get_all_portfolios()
-    captured = capsys.readouterr()
-    assert len(portfolios) == 0
-    assert "No portfolios found" in captured.out
-
-def test_print_all_portfolios(capsys, db_session):
-    user = User(username = 'testuser', password = 'testpass', firstname = 'Test', lastname = 'User', balance = 1000.0)
-    db_session.add(user)
-    db_session.commit()
-    set_logged_in_user('testuser')
-    portfolio1 = Portfolio(owner_username='testuser', name='Portfolio1', description='Desc1', investment_strategy='Strategy1')
-    portfolio2 = Portfolio(owner_username='testuser', name='Portfolio2', description='Desc2', investment_strategy='Strategy2')
-    db_session.add_all([portfolio1, portfolio2])
-    db_session.commit()
-    portfolios = get_all_portfolios()
-    print_all_portfolios(portfolios)
-    captured = capsys.readouterr()
-    assert "Portfolio1" in captured.out
-    assert "Portfolio2" in captured.out
-
-def test_print_all_portfolios_empty(capsys):
-    portfolios = []
-    print_all_portfolios(portfolios)
-    captured = capsys.readouterr()
-    assert "Portfolios" in captured.out  # Table title should still be printed  
 
 def test_harvest_investment(db_session, monkeypatch, capsys):
     user = User(username = 'testuser', password = 'testpass', firstname = 'Test', lastname = 'User', balance = 1000.0)

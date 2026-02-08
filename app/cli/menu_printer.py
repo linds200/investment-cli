@@ -8,7 +8,7 @@ from app.cli import constants
 from app.domain.MenuFunctions import MenuFunctions
 from app.services.login_service import login, get_logged_in_user, reset_logged_in_user
 from app.services.user_service import get_all_users, print_all_users, create_user, delete_user
-from app.services.portfolio_service import get_all_portfolios, print_all_portfolios, create_portfolio, delete_portfolio, harvest_investment
+from app.services.portfolio_service import get_all_portfolios, print_all_portfolios, get_all_transactions, print_all_transactions, create_portfolio, delete_portfolio, harvest_investment
 from app.services.security_service import get_all_securities, print_all_securities, place_buy_order
 
 _console = Console()
@@ -17,7 +17,7 @@ _menus: Dict[int, str] = {
     constants.login_menu: "- - - - \nWelcome to Kiwi CLI!\n- - - - \n1. Login\n0. Exit",
     constants.main_menu: "- - - - \nMain Menu\n- - - - \n1. Manage Users\n2. Manage Portfolios\n3. Marketplace\n0. Logout",
     constants.manager_users_menu: "- - - - \nManage Users\n- - - - \n1. View Users\n2. Add User\n3. Delete User\n0. Back to Main Menu",
-    constants.manage_portfolios_menu: "- - - - \nManage Portfolios\n- - - - \n1. View Portfolios\n2. Create Portfolio\n3. Delete Portfolio\n4. Harvest Investment\n0. Back to Main Menu",
+    constants.manage_portfolios_menu: "- - - - \nManage Portfolios\n- - - - \n1. View Portfolios\n2. View Transactions\n3. Create Portfolio\n4. Delete Portfolio\n5. Harvest Investment\n0. Back to Main Menu",
     constants.marketplace_menu: "- - - - \nMarketplace\n- - - - \n1. View Securities\n2. Place Buy Order\n0. Back to Main Menu",
 }
 
@@ -35,9 +35,10 @@ _router: Dict[str, MenuFunctions] = {
     "2.3": MenuFunctions(executor = delete_user, printer = lambda msg: _console.print(msg)),
     "1.2": MenuFunctions(navigator = lambda: constants.manage_portfolios_menu),
     "3.1": MenuFunctions(executor = get_all_portfolios, printer = print_all_portfolios),
-    "3.2": MenuFunctions(executor = create_portfolio, printer = lambda msg: _console.print(msg)),
-    "3.3": MenuFunctions(executor = delete_portfolio, printer = lambda msg: _console.print(msg)),
-    "3.4": MenuFunctions(executor = harvest_investment, printer = lambda msg: _console.print(msg)),
+    "3.2": MenuFunctions(executor = get_all_transactions, printer = print_all_transactions),
+    "3.3": MenuFunctions(executor = create_portfolio, printer = lambda msg: _console.print(msg)),
+    "3.4": MenuFunctions(executor = delete_portfolio, printer = lambda msg: _console.print(msg)),
+    "3.5": MenuFunctions(executor = harvest_investment, printer = lambda msg: _console.print(msg)),
     "1.3": MenuFunctions(navigator = lambda: constants.marketplace_menu),
     "4.1": MenuFunctions(executor = get_all_securities, printer = print_all_securities),
     "4.2": MenuFunctions(executor = place_buy_order, printer = lambda msg: _console.print(msg))
