@@ -20,10 +20,10 @@ def get_all_securities_route():
 def place_buy_order_route():
     data = request.get_json()
     try:
-        logged_in_user = data['logged_in_user']
-        portfolio_id = int(data['portfolio_id'])
-        ticker = data['ticker']
-        quantity_input = int(data['quantity_input'])
+        logged_in_user = data.get('logged_in_user')
+        portfolio_id = int(data.get('portfolio_id'))
+        ticker = data.get('ticker')
+        quantity_input = int(data.get('quantity_input'))
         place_buy_order(logged_in_user, portfolio_id, ticker, quantity_input)
         return {"message": f"Buy order for {quantity_input} shares of {ticker} placed successfully in portfolio {portfolio_id}."}, 201
     except Exception as e:

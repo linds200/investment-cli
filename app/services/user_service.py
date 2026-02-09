@@ -46,14 +46,14 @@ def create_user(logged_in_user: str, username: str, password: str, firstname: st
     try:
         if logged_in_user != "admin":
             raise UnsupportedUserOperation("Only admin can create new users.")
-        if get_user_by_username(username):
+        if username in [user.username for user in get_all_users()]:
             raise UnsupportedUserOperation(f"User {username} already exists.")
         if not isinstance(balance_input, int):
             raise UnsupportedUserOperation("Balance must be an integer.")
         if balance_input < 0:
             raise UnsupportedUserOperation("Balance cannot be negative.")
         session = db.session
-        session.add(User(username=username, password=password, firstname=firstname, lastname=lastname, balance=balance_input))
+        session.add(User(username = username, password = password, firstname = firstname, lastname = lastname, balance = balance_input))
         session.commit()
     finally:
         session.close() if session else None

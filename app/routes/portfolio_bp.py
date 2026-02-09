@@ -50,11 +50,10 @@ def get_portfolio_by_id_route(portfolio_id):
 
 @portfolio_bp.route('/transactions', methods = ['GET'])
 def get_all_transactions_route():
-    data = request.get_json()
     try:
-        logged_in_user = data['logged_in_user']
-        portfolio_id = data['portfolio_id']
-        security = data['security']
+        logged_in_user = request.args.get('logged_in_user')
+        portfolio_id = request.args.get('portfolio_id')
+        security = request.args.get('security')
         transactions = get_all_transactions(logged_in_user, portfolio_id, security)
         transactions_data = [{
             "id": transaction.id,
@@ -73,10 +72,10 @@ def get_all_transactions_route():
 def create_portfolio_route():
     data = request.get_json()
     try:
-        user = data['user']
-        name = data['name']
-        description = data['description']
-        investment_strategy = data['investment_strategy']
+        user = data.get('user')
+        name = data.get('name')
+        description = data.get('description')
+        investment_strategy = data.get('investment_strategy')
         create_portfolio(user, name, description, investment_strategy)
         return {"message": f"Portfolio {name} created for user {user}."}, 201
     except Exception as e:
@@ -86,7 +85,7 @@ def create_portfolio_route():
 def delete_portfolio_route(portfolio_id):
     data = request.get_json()
     try:
-        logged_in_user = data['logged_in_user']
+        logged_in_user = data.get('logged_in_user')
         delete_portfolio(logged_in_user, portfolio_id)
         return {"message": f"Portfolio with ID {portfolio_id} deleted successfully."}, 200
     except Exception as e:
@@ -96,11 +95,11 @@ def delete_portfolio_route(portfolio_id):
 def harvest_investment_route():
     data = request.get_json()
     try:
-        logged_in_user = data['logged_in_user']
-        portfolio_id = int(data['portfolio_id'])
-        ticker = data['ticker']
-        quantity_input = int(data['quantity_input'])
-        sale_price = float(data['sale_price'])
+        logged_in_user = data.get('logged_in_user')
+        portfolio_id = int(data.get('portfolio_id'))
+        ticker = data.get('ticker')
+        quantity_input = int(data.get('quantity_input'))
+        sale_price = float(data.get('sale_price'))
         harvest_investment(logged_in_user, portfolio_id, ticker, quantity_input, sale_price)
         return {"message": f"Harvested investment in {ticker} from Portfolio {portfolio_id}."}, 200
     except Exception as e:
