@@ -66,6 +66,7 @@ def get_all_transactions(logged_in_user: str, portfolio_id: int, security: str) 
             if not transactions:
                 raise UnsupportedPortfolioOperation(f"No transactions found for user {logged_in_user}.")
         else:
+            portfolio_id = int(portfolio_id)
             if not isinstance(portfolio_id, int):
                 raise UnsupportedPortfolioOperation("Portfolio ID must be an integer.")
             portfolio = session.query(Portfolio).filter(Portfolio.id == portfolio_id).first()
